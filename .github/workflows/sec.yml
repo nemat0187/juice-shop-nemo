@@ -36,6 +36,7 @@ jobs:
             -v "$(pwd)/dependency-check-reports:/report" \
             owasp/dependency-check:latest \
             --nvdApiKey "d3bc3d01-1006-4876-ae99-c5400f08aaa6" \
+            --disableArchive \
             --scan /src \
             --format HTML \
             --out /report
