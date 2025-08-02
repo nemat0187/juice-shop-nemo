@@ -19,17 +19,15 @@ jobs:
         with:
           node-version: '18'
 
-      # We still install dependencies so Dependency-Check can see them
       - name: Install Dependencies
         run: npm install
 
-      # --- This is the new way to run Semgrep ---
+      # --- This is the corrected Semgrep command ---
       - name: Run SAST Scan (Semgrep with Docker)
         run: |
           docker run --rm -v "$(pwd):/src" returntocorp/semgrep:latest \
-          scan --output /src/sast_before.json --json --config "auto" /src
+          semgrep scan --output /src/sast_before.json --json --config "auto" /src
 
-      # --- This is the new way to run Dependency-Check ---
       - name: Run SCA Scan (OWASP Dependency-Check with Docker)
         run: |
           mkdir dependency-check-reports
@@ -37,9 +35,9 @@ jobs:
             -v "$(pwd):/src" \
             -v "$(pwd)/dependency-check-reports:/report" \
             owasp/dependency-check:latest \
+	    --nvdApiKey "e588c0c7-568a-4772-8f46-4501e79f5912" \
             --scan /src \
             --format HTML \
-            --nvdApiKey "e588c0c7-568a-4772-8f46-4501e79f5912" \
             --out /report
       
       - name: Rename SCA Report
