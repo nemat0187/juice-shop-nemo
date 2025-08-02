@@ -1,57 +1,34 @@
-# A name for your workflow, which will appear on GitHub
 name: 'Shift-Left Security Scans'
-
-# This section defines the trigger that starts the workflow
 on:
   push:
     branches:
       - main
       - master
-
-# Jobs are the tasks the workflow will execute
 jobs:
   security-scans:
-    # Change this line to use a more stable runner version
     runs-on: ubuntu-22.04
-
-    # Steps are the individual commands to be executed in sequence
     steps:
-      # Step 1: Checks out your repository's code onto the runner
       - name: Checkout Code
         uses: actions/checkout@v4
-
-      # Step 2: Sets up the Node.js environment needed by Juice Shop
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-
-      # Step 3: Installs the project's dependencies
       - name: Install Dependencies
         run: npm install
-
-      # Step 4: Runs Semgrep for a SAST scan on your source code
       - name: Run SAST Scan (Semgrep)
         uses: semgrep/semgrep-action@v2
         with:
-          # Creates the JSON report required by your task
-          command: scan --output sast_before.json --json --config "auto" --exclude 'data' .
-
-      # Step 5: Runs OWASP Dependency-Check for an SCA scan
+          command: scan --output sast_before.json --json --config "auto" .
       - name: Run SCA Scan (OWASP Dependency-Check)
         uses: dependency-check/scan-action@v5
         with:
           scan: '.'
-          # Creates an HTML report
           format: 'HTML'
           output: './dependency-check-reports'
           fail: false
-
-      # Step 6: Renames the SCA report to match the required filename
       - name: Rename SCA Report
         run: mv ./dependency-check-reports/dependency-check-report.html ./dependency_before.html
-
-      # Step 7: Saves the generated scan reports as downloadable artifacts
       - name: Upload Scan Artifacts
         uses: actions/upload-artifact@v4
         with:
