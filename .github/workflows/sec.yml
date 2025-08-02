@@ -1,34 +1,50 @@
 name: 'Shift-Left Security Scans'
+
 on:
   push:
     branches:
       - main
       - master
+
 jobs:
   security-scans:
     runs-on: ubuntu-22.04
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
+
+      # We still install dependencies so Dependency-Check can see them
       - name: Install Dependencies
         run: npm install
-      - name: Run SAST Scan (Semgrep)
-        uses: semgrep/semgrep-action@v2
-        with:
-          command: scan --output sast_before.json --json --config "auto" .
-      - name: Run SCA Scan (OWASP Dependency-Check)
-        uses: dependency-check/scan-action@v5
-        with:
-          scan: '.'
-          format: 'HTML'
-          output: './dependency-check-reports'
-          fail: false
+
+      # --- This is the new way to run Semgrep ---
+      - name: Run SAST Scan (Semgrep with Docker)
+        run: |
+          docker run --rm -v "$(pwd):/src" returntocorp/semgrep:latest \
+          scan --output /src/sast_before.json --json --config "auto" /src
+
+      # --- This is the new way to run Dependency-Check ---
+      - name: Run SCA Scan (OWASP Dependency-Check with Docker)
+        run: |
+          mkdir dependency-check-reports
+          docker run --rm \
+            -v "$(pwd):/src" \
+            -v "$(pwd)/dependency-check-reports:/report" \
+            owasp/dependency-check:latest \
+            --scan /src \
+            --format HTML \
+            --nvdApiKey "e588c0c7-568a-4772-8f46-4501e79f5912" \
+            --out /report
+      
       - name: Rename SCA Report
         run: mv ./dependency-check-reports/dependency-check-report.html ./dependency_before.html
+
       - name: Upload Scan Artifacts
         uses: actions/upload-artifact@v4
         with:
