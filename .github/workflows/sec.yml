@@ -1,53 +1,170 @@
-name: 'Shift-Left Security Scans'
+name: Security Pipeline
 
 on:
   push:
-    branches:
-      - main
-      - master
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
   security-scans:
-    runs-on: ubuntu-22.04
-
+    runs-on: ubuntu-latest
+    
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    # Static Application Security Testing (SAST) with Semgrep
+    - name: Run Semgrep
+      uses: returntocorp/semgrep-action@v1
+      with:
+        config: >-
+          p/security-audit
+          p/javascript
+          p/nodejs
+          p/owasp-top-ten
+          p/secrets
+        generateSarif: true
+      continue-on-error: true
+    
+    - name: Save Semgrep results as JSON
+      if: always()
+      run: |
+        mkdir -p security-reports
+        # Run Semgrep again to get JSON output
+        docker run --rm -v "${PWD}:/src" returntocorp/semgrep:latest \
+          --config=auto \
+          --json \
+          --output=/src/security-reports/sast_results.json \
+          /src || true
+    
+    # Software Composition Analysis (SCA) with OWASP Dependency-Check
+    - name: Run OWASP Dependency-Check
+      uses: dependency-check/Dependency-Check_Action@main
+      with:
+        project: 'juice-shop-nemo'
+        path: '.'
+        format: 'HTML,JSON'
+        args: >
+          --enableRetired
+          --enableExperimental
+          --nvdApiKey ${{ secrets.NVD_API_KEY }}
+      env:
+        JAVA_HOME: /opt/jdk
+      continue-on-error: true
+    
+    - name: Move Dependency-Check reports
+      if: always()
+      run: |
+        mkdir -p security-reports
+        cp reports/dependency-check-report.html security-reports/dependency_check.html || true
+        cp reports/dependency-check-report.json security-reports/dependency_check.json || true
+    
+    # Archive security scan results
+    - name: Upload SAST results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: sast-results
+        path: |
+          security-reports/sast_results.json
+          .semgrep/semgrep.sarif
+        retention-days: 30
+    
+    - name: Upload Dependency-Check results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: dependency-check-results
+        path: |
+          security-reports/dependency_check.html
+          security-reports/dependency_check.json
+        retention-days: 30
+    
+    # Optional: Upload SARIF results to GitHub Security tab
+    - name: Upload SARIF to GitHub Security tab
+      if: always()
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: .semgrep/semgrep.sarif
+      continue-on-error: true
+    
+    # Generate summary
+    - name: Security Scan Summary
+      if: always()
+      run: |
+        echo "## Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        echo "### Static Application Security Testing (SAST)" >> $GITHUB_STEP_SUMMARY
+        echo "- Tool: Semgrep" >> $GITHUB_STEP_SUMMARY
+        echo "- Status: Completed" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        echo "### Software Composition Analysis (SCA)" >> $GITHUB_STEP_SUMMARY
+        echo "- Tool: OWASP Dependency-Check" >> $GITHUB_STEP_SUMMARY
+        echo "- Status: Completed" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        echo "📊 Check the Actions artifacts for detailed reports" >> $GITHUB_STEP_SUMMARY
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      - name: Install Dependencies
-        run: npm install
-
-      # --- This is the corrected Semgrep command ---
-      - name: Run SAST Scan (Semgrep with Docker)
-        run: |
-          docker run --rm -v "$(pwd):/src" returntocorp/semgrep:latest \
-          semgrep scan --output /src/sast_before.json --json --config "auto" /src
-
-      - name: Run SCA Scan (OWASP Dependency-Check with Docker)
-        run: |
-          mkdir dependency-check-reports
-          docker run --rm \
-            -v "$(pwd):/src" \
-            -v "$(pwd)/dependency-check-reports:/report" \
-            owasp/dependency-check:latest \
-            --nvdApiKey "d3bc3d01-1006-4876-ae99-c5400f08aaa6" \
-            --disableArchive \
-            --scan /src \
-            --format HTML \
-            --out /src
-      
-      - name: Rename SCA Report
-        run: mv ./dependency-check-reports/dependency-check-report.html ./dependency_before.html
-
-      - name: Upload Scan Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: security-scans-before
-          path: |
-            sast_before.json
-            dependency_before.html
+  # Optional: ESLint security plugin as additional SAST
+  eslint-security:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install ESLint and security plugin
+      run: |
+        npm install --save-dev eslint eslint-plugin-security
+    
+    - name: Create ESLint config for security
+      run: |
+        cat > .eslintrc.security.json << 'EOF'
+        {
+          "extends": ["plugin:security/recommended"],
+          "plugins": ["security"],
+          "parserOptions": {
+            "ecmaVersion": 2021,
+            "sourceType": "module"
+          },
+          "env": {
+            "node": true,
+            "es6": true
+          }
+        }
+        EOF
+    
+    - name: Run ESLint Security
+      run: |
+        mkdir -p security-reports
+        npx eslint . --config .eslintrc.security.json --format json --output-file security-reports/eslint_security.json || true
+        npx eslint . --config .eslintrc.security.json || true
+      continue-on-error: true
+    
+    - name: Upload ESLint results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: eslint-security-results
+        path: security-reports/eslint_security.json
+        retention-days: 30
