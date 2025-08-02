@@ -74,7 +74,7 @@ jobs:
     # Archive security scan results
     - name: Upload SAST results
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: sast-results
         path: |
@@ -84,7 +84,7 @@ jobs:
     
     - name: Upload Dependency-Check results
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: dependency-check-results
         path: |
@@ -163,7 +163,7 @@ jobs:
     
     - name: Upload ESLint results
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: eslint-security-results
         path: security-reports/eslint_security.json
