@@ -1,0 +1,57 @@
+# GitHub Actions Workflow for SAST and SCA scans with exclusions
+name: 'Shift-Left Security Scans'
+
+# This workflow runs on every `push` event to the main branch
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  security-scans:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out the source code
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Node.js environment for Juice Shop
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Step 3: Install project dependencies
+      - name: Install Dependencies
+        run: npm install
+
+      # Step 4: Run Semgrep for SAST scan with exclusions
+      - name: Run SAST Scan (Semgrep)
+        uses: semgrep/semgrep-action@v2
+        with:
+          # The --exclude flag ignores the 'data' directory
+          command: scan --output sast_before.json --json --config "auto" --exclude 'data' .
+
+      # Step 5: Run OWASP Dependency-Check for SCA scan
+      - name: Run SCA Scan (OWASP Dependency-Check)
+        uses: dependency-check/scan-action@v5
+        with:
+          scan: '.'
+          format: 'HTML'
+          output: './dependency-check-reports'
+          fail: false
+
+      # Step 6: Rename the Dependency-Check report
+      - name: Rename SCA Report
+        run: mv ./dependency-check-reports/dependency-check-report.html ./dependency_before.html
+
+      # Step 7: Upload all generated scan reports as artifacts
+      - name: Upload Scan Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-scans-before
+          path: |
+            sast_before.json
+            dependency_before.html
